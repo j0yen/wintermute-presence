@@ -1,0 +1,93 @@
+[package]
+name = "wintermute-presence"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Privacy-first presence heartbeat daemon: knows she's okay without watching her"
+
+[[bin]]
+name = "wm-presence"
+path = "src/main.rs"
+
+[lib]
+name = "wintermute_presence"
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused_must_use = "deny"
+unreachable_pub = "warn"
+
+[lints.clippy]
+# Strict everyday lints
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+# BAD_RUST-aligned restrictions: error on dishonest patterns
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "warn"
+mem_forget = "deny"
+as_conversions = "warn"
+float_arithmetic = "warn"
+dbg_macro = "deny"
+print_stdout = "warn"
+print_stderr = "warn"
+
+# Tame pedantic noise without weakening BAD_RUST coverage
+module_name_repetitions = "allow"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+panic = "abort"
+
+[features]
+# Hardware-reality feature gate: off by default so `cargo test` stays green
+# on hosts without a live agorabus daemon. When enabled, integration tests
+# that require a real bus connection become runnable.
+real-hardware = []
+
+# Enable mock bus infrastructure for integration tests.
+# Cargo enables this automatically for `cargo test --test *` integration tests
+# via the `--cfg test` flag, but the mock types need to be reachable from
+# the `tests/` directory. We expose them unconditionally in the crate so
+# integration test binaries (which can only access `pub` items) can import them.
+# The `#[doc(hidden)]` attribute keeps them out of user-facing docs.
+test-support = []
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "macros", "time", "fs", "signal"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive", "env"] }
+anyhow = "1"
+agorabus = { path = "/home/jsy/wintermute/agorabus" }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+toml = "0.8"
+
+[dev-dependencies]
+proptest = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "macros", "time", "fs"] }

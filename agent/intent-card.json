@@ -1,0 +1,143 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "intent_slug": "wintermute-presence",
+  "prd_source": "/home/jsy/wintermute/autobuilder/PRD-wintermute-presence.md",
+  "root_motivation": "Joe needs to know his mother is okay without surveilling her. Presence is privacy-by-design: it signals *that* she interacted with wintermute (never *what*), and emits a silence alarm only when she hasn't interacted inside her waking-hours window. It is off unless she knowingly enrolls.",
+  "user_persona": "Joe Yen, running wintermute on a local Linux laptop. His mother runs a companion device. The daemon runs on his device and observes interaction events that already flow on the agorabus — no new capture.",
+  "unfakeable_metric": {
+    "name": "acceptance_tests_passing_count",
+    "lower_is_better": false,
+    "harness_command": "cargo test --workspace --no-fail-fast 2>&1 | grep -c 'test .* ok'",
+    "target": 11
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "With presence enabled, a published `wm.audio.wake` produces exactly one `wm.presence.summon` on the bus.",
+      "test": "tests/acceptance_ac1.rs::test_wake_produces_summon"
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "A `wm.stt.final { transcript: \"hello there\" }` produces `wm.presence.summon { transcript_len: 11 }` — the daemon logs and emits no substring of the transcript text anywhere.",
+      "test": "tests/acceptance_ac2.rs::test_stt_final_transcript_len_not_text"
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "description": "The daily counter survives a daemon restart: state file written before exit is read correctly on next start.",
+      "test": "tests/acceptance_ac3.rs::test_state_file_round_trip"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "With zero interactions inside the configured waking-hours window, exactly one `wm.presence.silence` is emitted after the threshold. Subsequent ticks emit none (debounce).",
+      "test": "tests/acceptance_ac4.rs::test_silence_debounce"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "An interaction inside the window suppresses the silence emission for that window.",
+      "test": "tests/acceptance_ac5.rs::test_interaction_suppresses_silence"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Outside waking hours, no `wm.presence.silence` is ever emitted (tested with a clock at 03:00).",
+      "test": "tests/acceptance_ac6.rs::test_no_silence_outside_window"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "With presence disabled in config, the daemon subscribes nothing and emits nothing — verified by an empty bus after wake events.",
+      "test": "tests/acceptance_ac7.rs::test_opt_in_gate_disabled"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "`wm-presence status` prints today's count and last-interaction timestamp.",
+      "test": "tests/acceptance_ac8.rs::test_status_output"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "The daemon applies the self-emitted-topic filter: it does not consume its own `wm.presence.*` events.",
+      "test": "tests/acceptance_ac9.rs::test_self_topic_filter"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "systemd unit installs at the consistent bin path `/usr/local/bin/wm-presence` (no cargo-bin drift).",
+      "test": "tests/acceptance_ac10.rs::test_systemd_unit_bin_path"
+    },
+    {
+      "id": "AC11",
+      "level": "MUST",
+      "description": "`cargo test` green; `cargo clippy` clean; autobuilder receipts produced.",
+      "test": "metric: acceptance_tests_passing_count >= 11 AND clippy_warning_count == 0"
+    }
+  ],
+  "scope": [
+    "Subscribe to `wm.audio.wake` and `wm.stt.final` agorabus topics",
+    "Emit `wm.presence.summon { ts, transcript_len }` per interaction (character count, never text)",
+    "Persist daily interaction count and last_interaction_ts to a state file",
+    "Detect silence within waking-hours window and emit one `wm.presence.silence` per window (debounced)",
+    "Opt-in gate: no-op unless presence enabled in /etc/wintermute/conf.d/",
+    "Self-emitted-topic filter: skip own `wm.presence.*` events",
+    "CLI subcommands: `daemon` and `status`",
+    "systemd unit file for `wm-presence.service`"
+  ],
+  "non_goals": [
+    "Does NOT inspect transcript content — only character count",
+    "Does NOT store or log any words from wm.stt.final payloads",
+    "Does NOT implement distress detection (separate PRD)",
+    "Does NOT implement off-device transport (wm-reach handles that)",
+    "Does NOT implement enrollment UI (family-enroll PRD)",
+    "Does NOT track location, camera, microphone audio level, or any other signal",
+    "Does NOT support multi-person enrollment in v1 (single presence subject)"
+  ],
+  "hard_constraints": {
+    "rust_edition": "2024",
+    "target_kind": "cli",
+    "deny_unsafe": true,
+    "max_deps": 15,
+    "msrv": "1.88",
+    "additional": {
+      "no_transcript_text_in_egress": "Any code path that reads wm.stt.final must extract only payload.transcript.len() — the string itself must never appear in a published message, log line, or state file"
+    }
+  },
+  "five_whys_trace": [
+    {
+      "why": 1,
+      "q": "Why build a presence daemon instead of just calling periodically?",
+      "a": "Calling periodically is itself surveillance — it requires active monitoring. Presence inverts this: events that already exist on the bus are counted passively."
+    },
+    {
+      "why": 2,
+      "q": "Why use the agorabus events rather than a new sensor?",
+      "a": "wm.audio.wake and wm.stt.final already flow from the companion fleet. Adding a new sensor would mean new capture, which violates the privacy constraint."
+    },
+    {
+      "why": 3,
+      "q": "Why emit silence instead of just surfacing the count?",
+      "a": "The valuable signal is absence — 'no news today'. A count alone doesn't trigger anything. A silence event lets the digest system send a gentle nudge."
+    },
+    {
+      "why": 4,
+      "q": "Why make it opt-in at all, rather than always-on for enrolled devices?",
+      "a": "The subject (his mother) must knowingly choose to share presence data. A device with no enrollment should never emit presence signals to any downstream system."
+    }
+  ],
+  "ambiguities_resolved": [
+    {
+      "question": "What counts as 'inside the window' when the daemon starts mid-day?",
+      "resolution": "The silence threshold is checked against whether the current time is inside the waking-hours window AND interactions since window-start are zero. A daemon that starts at 15:00 with a window of 08:00-21:00 has window-start=08:00 for the current calendar day."
+    },
+    {
+      "question": "How is transcript_len measured for bare wm.audio.wake (no transcript)?",
+      "resolution": "A bare wake event produces transcript_len: 0 in the wm.presence.summon payload."
+    }
+  ],
+  "created_at": "2026-05-30T00:00:00Z"
+}

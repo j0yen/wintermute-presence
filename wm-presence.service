@@ -1,0 +1,16 @@
+[Unit]
+Description=wintermute-presence — privacy-first presence heartbeat daemon
+Documentation=https://github.com/j0yen/wintermute-presence
+After=network.target agorabus.service
+Wants=agorabus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wm-presence daemon
+Restart=on-failure
+RestartSec=5s
+Environment=RUST_LOG=info
+EnvironmentFile=-/etc/wintermute/conf.d/presence.env
+
+[Install]
+WantedBy=default.target
