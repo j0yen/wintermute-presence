@@ -19,6 +19,7 @@ fn test_silence_debounce() {
         waking_start: t(8, 0),
         waking_end: t(21, 0),
         silence_threshold: t(12, 0),
+        ..PresenceConfig::default()
     };
 
     let today = NaiveDate::from_ymd_opt(2026, 5, 30).unwrap_or_default();
@@ -29,6 +30,7 @@ fn test_silence_debounce() {
         daily_count: 0,
         last_interaction_ts: None,
         silence_emitted_for_window: false,
+        hearing_confirmed_in_window: false,
     };
 
     // Local time at 12:01 — past threshold, no interactions.

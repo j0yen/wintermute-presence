@@ -1,8 +1,6 @@
 //! AC10 (SHOULD): systemd unit installs at the consistent bin path
 //! `/usr/local/bin/wm-presence` (no cargo-bin drift).
 
-use std::path::Path;
-
 #[test]
 fn test_systemd_unit_bin_path() {
     let unit_content = include_str!("../wm-presence.service");

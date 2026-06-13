@@ -7,15 +7,19 @@
 #![allow(clippy::future_not_send)]
 
 use anyhow::{Context as _, Result};
-use chrono::Utc;
+use chrono::{Local, Utc};
 use serde_json::Value;
 use std::path::Path;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::config::PresenceConfig;
 use crate::events::{
     SttFinalPayload, SummonPayload, TOPIC_AUDIO_WAKE, TOPIC_PRESENCE_PREFIX,
     TOPIC_PRESENCE_SUMMON, TOPIC_STT_FINAL,
+};
+use crate::hearing::{
+    HearingEdge, HearingEnvelope, HearingState, TOPIC_HEALTH_HEARING, TOPIC_HEALTH_HEARING_FAIL,
+    TOPIC_HEALTH_HEARING_OK,
 };
 use crate::state::{DailyState, StateStore};
 
@@ -38,6 +42,16 @@ pub async fn run(sock: &Path, cfg: &PresenceConfig, store: &StateStore) -> Resul
     let mut client = connect_and_subscribe(sock, &session_id, pid).await?;
     let mut state = store.load().await.context("loading state")?;
 
+    // Hearing watcher state — only allocated when enabled.
+    let mut hearing = if cfg.hearing_watch_enabled {
+        Some(HearingState::new(
+            cfg.hearing_deaf_threshold_k,
+            cfg.hearing_healing_threshold_k,
+        ))
+    } else {
+        None
+    };
+
     loop {
         let event = match client.next_event().await {
             Ok(Some(e)) => e,
@@ -56,7 +70,45 @@ pub async fn run(sock: &Path, cfg: &PresenceConfig, store: &StateStore) -> Resul
             continue;
         }
 
-        // Route the event.
+        // Route hearing envelopes first (before the interaction router).
+        if event.topic == TOPIC_HEALTH_HEARING {
+            if let Some(ref mut hs) = hearing {
+                let now = Utc::now();
+                let in_window = is_in_waking_window(cfg);
+                let envelope: HearingEnvelope =
+                    serde_json::from_value(event.data.clone()).unwrap_or_default();
+                let edge = hs.feed(&envelope, now);
+
+                // Update per-window hearing confirmation.
+                if envelope.state == "ok" && in_window {
+                    state = state.with_hearing_confirmed();
+                    if let Err(e) = store.save(&state).await {
+                        error!(?e, "failed to save state after hearing confirm");
+                    }
+                }
+
+                match edge {
+                    HearingEdge::BecameDeaf if in_window => {
+                        if let Err(e) =
+                            publish_signal(sock, TOPIC_HEALTH_HEARING_FAIL, pid).await
+                        {
+                            error!(?e, "failed to publish wm.health.hearing.fail");
+                        }
+                    }
+                    HearingEdge::Recovered => {
+                        if let Err(e) =
+                            publish_signal(sock, TOPIC_HEALTH_HEARING_OK, pid).await
+                        {
+                            error!(?e, "failed to publish wm.health.hearing.ok");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            continue;
+        }
+
+        // Route the event to interaction processing.
         let Some(transcript_len) = route_topic(&event.topic, &event.data) else {
             continue; // Unrecognized topic — ignore.
         };
@@ -73,6 +125,54 @@ pub async fn run(sock: &Path, cfg: &PresenceConfig, store: &StateStore) -> Resul
     }
 
     Ok(())
+}
+
+/// Returns `true` if the current local time is within the configured waking-hours window.
+#[must_use]
+fn is_in_waking_window(cfg: &PresenceConfig) -> bool {
+    let local_now = Local::now().time();
+    local_now >= cfg.waking_start && local_now < cfg.waking_end
+}
+
+/// Publish a bare signal (empty JSON object) to `topic` on the bus.
+async fn publish_signal(sock: &Path, topic: &str, pid: u32) -> Result<()> {
+    let pub_session = format!("wm-presence-pub-{pid}");
+    let mut client = agorabus::Client::connect(sock)
+        .await
+        .context("connecting publish client")?;
+    client
+        .announce(&pub_session, pid, "/", "wm-presence publish")
+        .await
+        .context("announcing publish client")?;
+    client
+        .publish(topic, Value::Object(serde_json::Map::new()))
+        .await
+        .with_context(|| format!("publishing {topic}"))?;
+    Ok(())
+}
+
+/// Trigger a hearing probe via `wm-audio selftest --emit` (fire-and-forget).
+///
+/// The response arrives asynchronously as a `wm.health.hearing` envelope on
+/// the bus, which the main event loop processes.
+///
+/// # Errors
+///
+/// Logs a warning but does not propagate errors — a failed probe counts as a
+/// missing response, which the timeout path handles.
+pub fn spawn_hearing_probe() {
+    match std::process::Command::new("wm-audio")
+        .args(["selftest", "--emit"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(_child) => {} // child runs independently; we don't wait.
+        Err(e) => {
+            warn!(?e, "failed to spawn wm-audio selftest --emit");
+        }
+    }
 }
 
 /// Connect to the bus, announce, and subscribe to `wm.`.

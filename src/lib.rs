@@ -11,6 +11,7 @@
 pub mod config;
 pub mod daemon;
 pub mod events;
+pub mod hearing;
 pub mod silence;
 pub mod state;
 pub mod status;

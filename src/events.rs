@@ -5,6 +5,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Topic for incoming hearing-probe results (from pulse-hearing-probe / wm-audio selftest).
+pub use crate::hearing::{TOPIC_HEALTH_HEARING, TOPIC_HEALTH_HEARING_FAIL, TOPIC_HEALTH_HEARING_OK};
+
 /// Topic emitted by the audio wake-word detector.
 pub const TOPIC_AUDIO_WAKE: &str = "wm.audio.wake";
 

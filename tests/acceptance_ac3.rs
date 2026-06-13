@@ -1,7 +1,6 @@
 //! AC3 (MUST): The daily counter survives a daemon restart.
 //! State file written before exit is read correctly on next start.
 
-use std::path::PathBuf;
 use wintermute_presence::state::{DailyState, StateStore};
 
 #[tokio::test]
@@ -16,6 +15,7 @@ async fn test_state_file_round_trip() -> anyhow::Result<()> {
         daily_count: 42,
         last_interaction_ts: Some(chrono::Utc::now()),
         silence_emitted_for_window: false,
+        hearing_confirmed_in_window: false,
     };
     store.save(&written).await?;
 

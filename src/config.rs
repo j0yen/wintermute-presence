@@ -30,6 +30,23 @@ pub struct PresenceConfig {
     /// since `waking_start` (local time, HH:MM). Must be within the window.
     #[serde(with = "naive_time_serde")]
     pub silence_threshold: TimeOfDay,
+
+    /// Enable the cadenced hearing-liveness watcher.
+    ///
+    /// When `false`, no probing occurs and the daemon's existing
+    /// `wm.presence.*` behaviour is completely unchanged.
+    pub hearing_watch_enabled: bool,
+
+    /// How often (in seconds) to trigger a hearing probe.
+    ///
+    /// Overridable via `WM_PULSE_CADENCE_SECS` environment variable.
+    pub hearing_probe_interval_s: u64,
+
+    /// Number of consecutive non-ok probes required before declaring `Deaf`.
+    pub hearing_deaf_threshold_k: u32,
+
+    /// Number of consecutive ok probes while healing before declaring `Hearing`.
+    pub hearing_healing_threshold_k: u32,
 }
 
 /// Build a `NaiveTime` from known-valid hour/minute/second constants.
@@ -47,6 +64,10 @@ impl Default for PresenceConfig {
             waking_start: default_time(8, 0, 0),
             waking_end: default_time(21, 0, 0),
             silence_threshold: default_time(12, 0, 0),
+            hearing_watch_enabled: true,
+            hearing_probe_interval_s: 1200, // 20 minutes
+            hearing_deaf_threshold_k: 3,
+            hearing_healing_threshold_k: 2,
         }
     }
 }

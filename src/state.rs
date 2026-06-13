@@ -19,6 +19,17 @@ pub struct DailyState {
     pub last_interaction_ts: Option<DateTime<Utc>>,
     /// True if we already emitted `wm.presence.silence` for today's window.
     pub silence_emitted_for_window: bool,
+    /// True once a `wm.health.hearing` `ok` envelope arrived within today's
+    /// waking-hours window.  Consumed by pulse-silence-gate to distinguish
+    /// "quiet but confirmed hearing" from "deaf all day".
+    #[serde(default)]
+    pub hearing_confirmed_in_window: bool,
+}
+
+impl Default for DailyState {
+    fn default() -> Self {
+        Self::fresh(chrono::Local::now().date_naive())
+    }
 }
 
 impl DailyState {
@@ -30,6 +41,16 @@ impl DailyState {
             daily_count: 0,
             last_interaction_ts: None,
             silence_emitted_for_window: false,
+            hearing_confirmed_in_window: false,
+        }
+    }
+
+    /// Mark that a confirmed-hearing probe landed in this window.
+    #[must_use]
+    pub const fn with_hearing_confirmed(self) -> Self {
+        Self {
+            hearing_confirmed_in_window: true,
+            ..self
         }
     }
 
