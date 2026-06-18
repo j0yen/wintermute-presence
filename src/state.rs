@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs;
 
+use crate::hearing::HearingLiveness;
+
 /// Per-day presence state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DailyState {
@@ -24,6 +26,15 @@ pub struct DailyState {
     /// "quiet but confirmed hearing" from "deaf all day".
     #[serde(default)]
     pub hearing_confirmed_in_window: bool,
+    /// Current hearing-liveness verdict, persisted across daemon restarts.
+    ///
+    /// Defaults to `Hearing` on first load (optimistic assumption until
+    /// the first probe arrives).
+    #[serde(default)]
+    pub hearing_liveness: HearingLiveness,
+    /// UTC timestamp of the last `ok` hearing probe, if any.
+    #[serde(default)]
+    pub hearing_last_ok_ts: Option<DateTime<Utc>>,
 }
 
 impl Default for DailyState {
@@ -35,28 +46,44 @@ impl Default for DailyState {
 impl DailyState {
     /// Create a fresh state for `date` with zero interactions.
     #[must_use]
-    pub const fn fresh(date: NaiveDate) -> Self {
+    pub fn fresh(date: NaiveDate) -> Self {
         Self {
             date,
             daily_count: 0,
             last_interaction_ts: None,
             silence_emitted_for_window: false,
             hearing_confirmed_in_window: false,
+            hearing_liveness: HearingLiveness::default(),
+            hearing_last_ok_ts: None,
         }
     }
 
     /// Mark that a confirmed-hearing probe landed in this window.
     #[must_use]
-    pub const fn with_hearing_confirmed(self) -> Self {
+    pub fn with_hearing_confirmed(self) -> Self {
         Self {
             hearing_confirmed_in_window: true,
             ..self
         }
     }
 
+    /// Update the persisted hearing liveness state and last-ok timestamp.
+    #[must_use]
+    pub fn with_hearing_liveness(
+        self,
+        liveness: HearingLiveness,
+        last_ok_ts: Option<DateTime<Utc>>,
+    ) -> Self {
+        Self {
+            hearing_liveness: liveness,
+            hearing_last_ok_ts: last_ok_ts.or(self.hearing_last_ok_ts),
+            ..self
+        }
+    }
+
     /// Record an interaction at `ts`, returning the updated state.
     #[must_use]
-    pub const fn with_interaction(self, ts: DateTime<Utc>) -> Self {
+    pub fn with_interaction(self, ts: DateTime<Utc>) -> Self {
         Self {
             daily_count: self.daily_count.saturating_add(1),
             last_interaction_ts: Some(ts),
@@ -66,7 +93,7 @@ impl DailyState {
 
     /// Mark silence as emitted for this window, returning the updated state.
     #[must_use]
-    pub const fn with_silence_emitted(self) -> Self {
+    pub fn with_silence_emitted(self) -> Self {
         Self {
             silence_emitted_for_window: true,
             ..self

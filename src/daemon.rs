@@ -79,12 +79,14 @@ pub async fn run(sock: &Path, cfg: &PresenceConfig, store: &StateStore) -> Resul
                     serde_json::from_value(event.data.clone()).unwrap_or_default();
                 let edge = hs.feed(&envelope, now);
 
-                // Update per-window hearing confirmation.
+                // Update per-window hearing confirmation and persist liveness.
                 if envelope.state == "ok" && in_window {
                     state = state.with_hearing_confirmed();
-                    if let Err(e) = store.save(&state).await {
-                        error!(?e, "failed to save state after hearing confirm");
-                    }
+                }
+                // Always persist liveness after each envelope so status + restarts see it.
+                state = state.with_hearing_liveness(hs.liveness, hs.last_ok_ts);
+                if let Err(e) = store.save(&state).await {
+                    error!(?e, "failed to save state after hearing envelope");
                 }
 
                 match edge {

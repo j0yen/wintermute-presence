@@ -31,6 +31,7 @@ fn test_silence_debounce() {
         last_interaction_ts: None,
         silence_emitted_for_window: false,
         hearing_confirmed_in_window: false,
+        ..DailyState::fresh(today)
     };
 
     // Local time at 12:01 — past threshold, no interactions.

@@ -18,6 +18,7 @@ async fn test_status_output() -> anyhow::Result<()> {
         last_interaction_ts: Some(ts),
         silence_emitted_for_window: false,
         hearing_confirmed_in_window: false,
+        ..DailyState::fresh(today)
     };
     store.save(&state).await?;
 
@@ -31,6 +32,14 @@ async fn test_status_output() -> anyhow::Result<()> {
     assert!(
         output.contains("interactions=7"),
         "status must contain interactions count; got: {output}"
+    );
+    assert!(
+        output.contains("hearing_liveness="),
+        "status must include hearing_liveness; got: {output}"
+    );
+    assert!(
+        output.contains("hearing_last_ok="),
+        "status must include hearing_last_ok; got: {output}"
     );
     Ok(())
 }

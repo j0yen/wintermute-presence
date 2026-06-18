@@ -28,6 +28,7 @@ fn test_interaction_suppresses_silence() {
         last_interaction_ts: Some(chrono::Utc::now()),
         silence_emitted_for_window: false,
         hearing_confirmed_in_window: false,
+        ..DailyState::fresh(today)
     };
 
     // Local time at 12:01 — past threshold.

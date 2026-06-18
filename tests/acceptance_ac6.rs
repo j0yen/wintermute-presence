@@ -29,6 +29,7 @@ fn test_no_silence_outside_window() {
         last_interaction_ts: None,
         silence_emitted_for_window: false,
         hearing_confirmed_in_window: false,
+        ..DailyState::fresh(today)
     };
 
     // Local time at 03:00 — outside waking hours.

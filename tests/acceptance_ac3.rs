@@ -16,6 +16,7 @@ async fn test_state_file_round_trip() -> anyhow::Result<()> {
         last_interaction_ts: Some(chrono::Utc::now()),
         silence_emitted_for_window: false,
         hearing_confirmed_in_window: false,
+        ..DailyState::fresh(chrono::Local::now().date_naive())
     };
     store.save(&written).await?;
 
